@@ -1,0 +1,54 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<GoodsMovementDeclaration xmlns="urn:example:customs:goods-movement:v1" schemaVersion="1.0">
+  <Header>
+    <MessageId>3e3f25fa-4b15-45a6-afc8-456d4f562f01</MessageId>
+    <CorrelationId>55a3c5c0-c418-4569-b9b2-cd8c0a49b6f9</CorrelationId>
+    <CreatedAt>2026-11-04T16:52:58.699Z</CreatedAt>
+    <SourceSystem>TRADER_PORTAL</SourceSystem>
+  </Header>
+  <Declaration>
+    <DeclarationRef>26XID2728LG0NA26RH</DeclarationRef>
+    <DeclarationCategory>IMPORT</DeclarationCategory>
+    <MovementType>EU_TO_NI</MovementType>
+    <DeclarantEori>GB493217034346</DeclarantEori>
+    <Consignor>
+      <Name>Fernandes</Name>
+      <Eori>FR6053050400</Eori>
+      <Address>
+        <Line1>2, rue de Poulain</Line1>
+        <Town>Lyon</Town>
+        <Postcode>74159</Postcode>
+        <CountryCode>FR</CountryCode>
+      </Address>
+    </Consignor>
+    <Consignee>
+      <Name>Wells-Byrne</Name>
+      <Eori>XI953908211381</Eori>
+      <Address>
+        <Line1>8 Claire Prairie</Line1>
+        <Town>Armagh</Town>
+        <Postcode>BT8 2JY</Postcode>
+        <CountryCode>GB</CountryCode>
+      </Address>
+    </Consignee>
+    <Transport>
+      <Mode>ROAD</Mode>
+      <VehicleRegistration>251-D-48811</VehicleRegistration>
+    </Transport>
+    <ArrivalDate>2026-11-05</ArrivalDate>
+    <UkimsAuthorised>true</UkimsAuthorised>
+    <TotalGrossMassKg>270.524</TotalGrossMassKg>
+    <InvoiceCurrency>EUR</InvoiceCurrency>
+    <TotalInvoiceValue>8648.54</TotalInvoiceValue>
+    <GoodsItems>
+      <GoodsItem>
+        <ItemNumber>1</ItemNumber>
+        <CommodityCode>19053199</CommodityCode>
+        <Description>Sweet biscuits</Description>
+        <CountryOfOrigin>FR</CountryOfOrigin>
+        <NetMassKg>250.485</NetMassKg>
+        <ItemValue>8648.53</ItemValue>
+      </GoodsItem>
+    </GoodsItems>
+  </Declaration>
+</GoodsMovementDeclaration>

@@ -1,0 +1,70 @@
+# Field-level mapping: inbound Kafka XML message -> Oracle CUSTOMS schema.
+#
+# Each Oracle column is mapped either to an XPath in the message, or to a
+# `derived` rule: an independent re-implementation of a business rule in
+# the harness (see customs_harness/reconciliation/rules.py). Values are
+# coerced to a type before comparison, so "12.5" and 12.500 match, and
+# "true" and "1" both mean Y.
+#
+# Types: string (default), integer, decimal, date, datetime, boolean
+# Options: lookup (code table below), true_value/false_value, tolerance
+
+name: goods-movement-declaration
+description: Declarations submitted on the inbound topic vs what the pipeline stored in Oracle
+
+source:
+  topic: customs.declarations.inbound
+  rejected_topic: customs.declarations.rejected
+  namespaces:
+    gm: urn:example:customs:goods-movement:v1
+  key: gm:Declaration/gm:DeclarationRef
+  correlation_id: gm:Header/gm:CorrelationId
+
+lookups:
+  declaration_category: {IMPORT: IM, EXPORT: EX, TRANSIT: TR}
+  transport_mode: {SEA: 1, RAIL: 2, ROAD: 3, AIR: 4}
+
+header:
+  table: DECLARATION
+  key_column: DECLARATION_REF
+  timestamp_column: PERSISTED_AT   # two-way check: rows stored with no matching message
+  columns:
+    DECLARATION_REF:      {xpath: gm:Declaration/gm:DeclarationRef}
+    CORRELATION_ID:       {xpath: gm:Header/gm:CorrelationId}
+    MESSAGE_ID:           {xpath: gm:Header/gm:MessageId}
+    MESSAGE_CREATED_AT:   {xpath: gm:Header/gm:CreatedAt, type: datetime}
+    SOURCE_SYSTEM:        {xpath: gm:Header/gm:SourceSystem}
+    DECLARATION_CATEGORY: {xpath: gm:Declaration/gm:DeclarationCategory, lookup: declaration_category}
+    MOVEMENT_TYPE:        {xpath: gm:Declaration/gm:MovementType}
+    DECLARANT_EORI:       {xpath: gm:Declaration/gm:DeclarantEori}
+    CONSIGNOR_NAME:       {xpath: gm:Declaration/gm:Consignor/gm:Name}
+    CONSIGNOR_COUNTRY:    {xpath: gm:Declaration/gm:Consignor/gm:Address/gm:CountryCode}
+    CONSIGNEE_NAME:       {xpath: gm:Declaration/gm:Consignee/gm:Name}
+    CONSIGNEE_EORI:       {xpath: gm:Declaration/gm:Consignee/gm:Eori}
+    CONSIGNEE_TOWN:       {xpath: gm:Declaration/gm:Consignee/gm:Address/gm:Town}
+    CONSIGNEE_POSTCODE:   {xpath: gm:Declaration/gm:Consignee/gm:Address/gm:Postcode}
+    CONSIGNEE_COUNTRY:    {xpath: gm:Declaration/gm:Consignee/gm:Address/gm:CountryCode}
+    TRANSPORT_MODE_CODE:  {xpath: gm:Declaration/gm:Transport/gm:Mode, lookup: transport_mode, type: integer}
+    VEHICLE_REGISTRATION: {xpath: gm:Declaration/gm:Transport/gm:VehicleRegistration}
+    PORT_OF_ENTRY:        {xpath: gm:Declaration/gm:Transport/gm:PortOfEntry}
+    ARRIVAL_DATE:         {xpath: gm:Declaration/gm:ArrivalDate, type: date}
+    UKIMS_AUTHORISED:     {xpath: gm:Declaration/gm:UkimsAuthorised, type: boolean, true_value: "Y", false_value: "N"}
+    TOTAL_GROSS_MASS_KG:  {xpath: gm:Declaration/gm:TotalGrossMassKg, type: decimal}
+    INVOICE_CURRENCY:     {xpath: gm:Declaration/gm:InvoiceCurrency}
+    TOTAL_INVOICE_VALUE:  {xpath: gm:Declaration/gm:TotalInvoiceValue, type: decimal}
+    GOODS_ITEM_COUNT:     {xpath: "count(gm:Declaration/gm:GoodsItems/gm:GoodsItem)", type: integer}
+    RISK_SCORE:           {derived: risk_score, type: integer}
+    LANE:                 {derived: lane}
+
+children:
+  - table: GOODS_ITEM
+    parent_key_column: DECLARATION_REF
+    repeat: gm:Declaration/gm:GoodsItems/gm:GoodsItem
+    item_key_column: ITEM_NUMBER
+    columns:  # XPaths relative to each GoodsItem
+      ITEM_NUMBER:       {xpath: gm:ItemNumber, type: integer}
+      COMMODITY_CODE:    {xpath: gm:CommodityCode}
+      DESCRIPTION:       {xpath: gm:Description}
+      COUNTRY_OF_ORIGIN: {xpath: gm:CountryOfOrigin}
+      NET_MASS_KG:       {xpath: gm:NetMassKg, type: decimal}
+      ITEM_VALUE:        {xpath: gm:ItemValue, type: decimal}

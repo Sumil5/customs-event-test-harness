@@ -1,0 +1,87 @@
+{% extends "base.html.j2" %}
+{% block title %}Reconciliation report{% endblock %}
+{% block content %}
+<h1>Kafka → Oracle reconciliation
+  <span class="verdict {{ 'ok' if r.passed else 'bad' }}">{{ 'PASSED' if r.passed else 'FAILED: %d discrepancies' % r.discrepancies }}</span>
+</h1>
+<div class="meta">
+  Mapping <code>{{ r.mapping }}</code> · topic <code>{{ r.topic }}</code>
+  {% if r.run_id %}· run <code>{{ r.run_id }}</code>{% endif %}
+  {% if r.since %}· since <code>{{ r.since }}</code>{% endif %}
+  · {{ '%.2f' % r.duration_seconds }}s
+</div>
+
+<div class="tiles">
+  <div class="tile"><div class="label">Messages read</div><div class="value">{{ '{:,}'.format(r.messages_read) }}</div>
+    <div class="sub">{{ r.duplicate_messages }} duplicate deliveries</div></div>
+  <div class="tile ok"><div class="label">Matched</div><div class="value">{{ '{:,}'.format(counts.MATCHED) }}</div>
+    <div class="sub">every field equal</div></div>
+  <div class="tile {{ 'bad' if counts.MISMATCHED else '' }}"><div class="label">Mismatched</div>
+    <div class="value">{{ '{:,}'.format(counts.MISMATCHED) }}</div><div class="sub">stored, but differs</div></div>
+  <div class="tile {{ 'bad' if counts.MISSING else '' }}"><div class="label">Missing</div>
+    <div class="value">{{ '{:,}'.format(counts.MISSING) }}</div><div class="sub">lost by the pipeline</div></div>
+  <div class="tile"><div class="label">Rejected</div><div class="value">{{ '{:,}'.format(counts.REJECTED) }}</div>
+    <div class="sub">dead-lettered with a reason</div></div>
+  <div class="tile {{ 'bad' if counts.UNPARSEABLE else '' }}"><div class="label">Unparseable</div>
+    <div class="value">{{ '{:,}'.format(counts.UNPARSEABLE) }}</div><div class="sub">not dead-lettered</div></div>
+  {% if r.two_way %}<div class="tile {{ 'bad' if r.orphans else '' }}"><div class="label">Orphans</div>
+    <div class="value">{{ r.orphans|length }}</div><div class="sub">in Oracle, no message</div></div>{% endif %}
+</div>
+
+<h2>Defect signatures</h2>
+<div class="card">
+{% if signatures %}
+<table>
+  <tr><th>Column</th><th>Signature</th><th class="num">Messages</th><th style="width:30%"></th></tr>
+  {% for (location, hint), n in signatures %}
+  <tr><td><code>{{ location }}</code></td><td>{{ hint }}</td><td class="num">{{ '{:,}'.format(n) }}</td>
+      <td><div class="bar" style="width: {{ (100 * n / max_signature)|round(1) }}%"></div></td></tr>
+  {% endfor %}
+</table>
+{% else %}<div class="empty">No field-level discrepancies.</div>{% endif %}
+</div>
+
+<h2>Rejections by reason</h2>
+<div class="card">
+{% if rejections %}
+<table>
+  <tr><th>Reason code</th><th class="num">Messages</th></tr>
+  {% for code, n in rejections %}<tr><td><code>{{ code }}</code></td><td class="num">{{ n }}</td></tr>{% endfor %}
+</table>
+{% else %}<div class="empty">No messages were dead-lettered.</div>{% endif %}
+</div>
+
+<h2>Discrepancies{% if shown < total_problems %} (first {{ shown }} of {{ total_problems }}){% endif %}</h2>
+<div class="card">
+{% if problems %}
+<table>
+  <tr><th>Status</th><th>Declaration</th><th>Field</th><th>Expected (message)</th><th>Actual (Oracle)</th><th>Signature</th></tr>
+  {% for res in problems %}
+    {% if res.diffs %}
+      {% for d in res.diffs %}
+      <tr>
+        <td>{% if loop.first %}<span class="pill bad">{{ res.status }}</span>{% endif %}</td>
+        <td class="mono">{% if loop.first %}{{ res.key }}<br><span class="meta">{{ res.correlation_id }}</span>{% endif %}</td>
+        <td class="mono">{{ d.path }}</td>
+        <td class="mono">{{ d.expected }}</td>
+        <td class="mono">{{ d.actual }}</td>
+        <td>{{ d.hint or d.kind }}</td>
+      </tr>
+      {% endfor %}
+    {% else %}
+      <tr>
+        <td><span class="pill bad">{{ res.status }}</span></td>
+        <td class="mono">{{ res.key or '—' }}<br><span class="meta">{{ res.correlation_id }}</span></td>
+        <td colspan="4">{{ res.detail or 'not found in Oracle and not on the dead-letter topic' }}</td>
+      </tr>
+    {% endif %}
+  {% endfor %}
+</table>
+{% else %}<div class="empty">Nothing to show: every message is accounted for and accurate.</div>{% endif %}
+</div>
+
+{% if r.orphans %}
+<h2>Orphans (stored in Oracle with no message on the topic)</h2>
+<div class="card"><table>{% for key in r.orphans[:200] %}<tr><td class="mono">{{ key }}</td></tr>{% endfor %}</table></div>
+{% endif %}
+{% endblock %}

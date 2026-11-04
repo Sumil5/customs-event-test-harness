@@ -1,0 +1,181 @@
+# Local replica of an event-driven customs pipeline plus its test harness.
+#
+#   make up        -> Kafka, Oracle, moto (CloudWatch Logs emulator) and the three services
+#   make e2e       -> runs the containerised test harness against the stack
+#
+# Every image is multi-arch (amd64 + arm64), so it runs natively on Apple Silicon.
+name: customs-harness
+
+x-service-env: &service-env
+  KAFKA_BOOTSTRAP_SERVERS: kafka:19092
+  ORACLE_DSN: oracle:1521/FREEPDB1
+  ORACLE_USER: customs
+  ORACLE_PASSWORD: ${ORACLE_APP_PASSWORD:-customs_pw}
+  SCHEMA_PATH: /app/schemas/goods-movement-declaration-v1.xsd
+  # Ship structured logs to the CloudWatch Logs emulator (moto); unset to log to stdout only.
+  CLOUDWATCH_ENABLED: ${CLOUDWATCH_ENABLED:-true}
+  AWS_ENDPOINT_URL: http://moto:5000
+  AWS_DEFAULT_REGION: eu-west-2
+  AWS_ACCESS_KEY_ID: test
+  AWS_SECRET_ACCESS_KEY: test
+
+x-service: &service
+  image: customs-services:local
+  build:
+    context: .
+    dockerfile: services/Dockerfile
+  restart: unless-stopped
+  depends_on:
+    kafka-init:
+      condition: service_completed_successfully
+    oracle:
+      condition: service_healthy
+    moto:
+      condition: service_healthy
+  healthcheck:
+    # Each service touches a heartbeat file on every poll loop.
+    test: ["CMD", "python", "-m", "customs_services.common.heartbeat", "--check"]
+    interval: 5s
+    timeout: 5s
+    retries: 12
+    start_period: 10s
+
+services:
+  kafka:
+    image: apache/kafka:4.3.2
+    hostname: kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: INTERNAL://:19092,EXTERNAL://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:19092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_HEAP_OPTS: -Xms512m -Xmx1g
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server kafka:19092 > /dev/null 2>&1"]
+      interval: 5s
+      timeout: 15s
+      retries: 30
+      start_period: 10s
+
+  kafka-init:
+    image: customs-kafka-init:local
+    build: infra/kafka
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      BOOTSTRAP: kafka:19092
+    restart: "no"
+
+  oracle:
+    # Oracle AI Database 26ai Free (23.26). "faststart" ships a pre-built database: ~15s to ready.
+    # infra/oracle/Dockerfile adds the CUSTOMS schema scripts to gvenzl/oracle-free.
+    image: customs-oracle:local
+    build: infra/oracle
+    ports:
+      - "1521:1521"
+    environment:
+      ORACLE_PASSWORD: ${ORACLE_ADMIN_PASSWORD:-OracleAdmin_123}
+      APP_USER: customs
+      APP_USER_PASSWORD: ${ORACLE_APP_PASSWORD:-customs_pw}
+    healthcheck:
+      # Healthy only once the database is open AND our init scripts have run.
+      test: ["CMD", "healthcheck.sh"]
+      interval: 5s
+      timeout: 10s
+      retries: 60
+      start_period: 15s
+
+  moto:
+    # Open-source AWS emulator; stands in for CloudWatch Logs locally.
+    image: motoserver/moto:5.2.4
+    ports:
+      - "5050:5000"  # host 5050: macOS AirPlay Receiver already listens on 5000
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/moto-api/')"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # ---------------- System under test: simulated customs services ----------------
+
+  intake:
+    <<: *service
+    command: ["python", "-m", "customs_services.intake"]
+    environment:
+      <<: *service-env
+      SERVICE_NAME: intake
+      FAULTS: ${INTAKE_FAULTS:-}
+
+  assessment:
+    <<: *service
+    command: ["python", "-m", "customs_services.assessment"]
+    environment:
+      <<: *service-env
+      SERVICE_NAME: assessment
+      FAULTS: ${ASSESSMENT_FAULTS:-}
+
+  persistence:
+    <<: *service
+    command: ["python", "-m", "customs_services.persistence"]
+    environment:
+      <<: *service-env
+      SERVICE_NAME: persistence
+      FAULTS: ${PERSISTENCE_FAULTS:-}
+
+  # ---------------- Test harness (profile: test) ----------------
+
+  harness:
+    profiles: ["test"]
+    image: customs-harness:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      intake:
+        condition: service_healthy
+      assessment:
+        condition: service_healthy
+      persistence:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:19092
+      ORACLE_DSN: oracle:1521/FREEPDB1
+      ORACLE_USER: customs
+      ORACLE_PASSWORD: ${ORACLE_APP_PASSWORD:-customs_pw}
+      AWS_ENDPOINT_URL: http://moto:5000
+      AWS_DEFAULT_REGION: eu-west-2
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      E2E_REQUIRED: "1"
+      CLOUDWATCH_ENABLED: ${CLOUDWATCH_ENABLED:-true}
+      # Read by tests/e2e/test_injected_faults.py to predict which messages the faults hit.
+      PERSISTENCE_FAULTS: ${PERSISTENCE_FAULTS:-}
+      ASSESSMENT_FAULTS: ${ASSESSMENT_FAULTS:-}
+    volumes:
+      - ./reports:/app/reports
+
+  # ---------------- Optional tooling (profile: tools) ----------------
+
+  kafka-ui:
+    profiles: ["tools"]
+    image: kafbat/kafka-ui:v1.5.0
+    ports:
+      - "8080:8080"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:19092

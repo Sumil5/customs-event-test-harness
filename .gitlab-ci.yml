@@ -1,0 +1,121 @@
+# GitLab CI/CD: lint -> unit -> end-to-end (containerised) -> fault injection -> Pages.
+#
+# The e2e jobs start the whole stack with Docker-in-Docker and run the harness
+# image against it, exactly as `make e2e-docker` does on a laptop.
+
+stages:
+  - lint
+  - test
+  - e2e
+  - publish
+
+default:
+  interruptible: true
+
+variables:
+  UV_VERSION: "0.11.32"
+  UV_CACHE_DIR: "$CI_PROJECT_DIR/.uv-cache"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH
+    - if: $CI_COMMIT_TAG
+
+# ---------------------------------------------------------------- templates
+
+.python:
+  image: python:3.13-slim
+  cache:
+    key:
+      files: [uv.lock]
+    paths: [.uv-cache]
+  before_script:
+    - pip install --quiet "uv==$UV_VERSION"
+    - uv sync --frozen
+
+.docker:
+  image: docker:29.9
+  services:
+    - name: docker:29.9-dind
+      # Pull Docker Hub images through Google's mirror to avoid anonymous rate limits.
+      command: ["--registry-mirror", "https://mirror.gcr.io"]
+  variables:
+    DOCKER_HOST: tcp://docker:2376
+    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_TLS_VERIFY: "1"
+    DOCKER_CERT_PATH: "/certs/client"
+  before_script:
+    - docker info --format 'Docker {{.ServerVersion}} on {{.OSType}}/{{.Architecture}}'
+    - docker compose up -d --build --wait
+  after_script:
+    - mkdir -p reports
+    - docker compose logs --no-color > reports/compose.log 2>&1 || true
+    - docker compose --profile test down -v || true
+
+# ---------------------------------------------------------------- jobs
+
+lint:
+  stage: lint
+  extends: .python
+  script:
+    - uv run ruff check .
+    - uv run ruff format --check .
+
+unit-tests:
+  stage: test
+  extends: .python
+  script:
+    - uv run pytest tests/unit --junitxml=reports/junit-unit.xml
+  artifacts:
+    when: always
+    reports:
+      junit: reports/junit-unit.xml
+
+e2e-tests:
+  stage: e2e
+  extends: .docker
+  script:
+    # Run the containerised harness; copy results out rather than relying on bind mounts under DinD.
+    - docker compose --profile test run --name e2e harness pytest tests/e2e -v --junitxml=reports/junit-e2e.xml || STATUS=$?
+    - docker compose --profile test run --name demo harness harness run -n 2000 --rate 200 || true
+    - mkdir -p reports && docker cp e2e:/app/reports/. reports/ && docker cp demo:/app/reports/. reports/
+    - exit ${STATUS:-0}
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths: [reports/]
+    reports:
+      junit: reports/junit-e2e.xml
+
+fault-injection:
+  stage: e2e
+  extends: .docker
+  variables:
+    PERSISTENCE_FAULTS: "rounding,truncate_description,ascii_names,drop_millis,skip_last_item,drop=0.02"
+    ASSESSMENT_FAULTS: "lane_boundary,delay=0.002:14000"
+  script:
+    # Proves the harness catches every known defect (tests pass when the faults are detected).
+    - docker compose --profile test run --name faults harness
+        pytest tests/e2e/test_injected_faults.py -v --junitxml=reports/junit-faults.xml || STATUS=$?
+    - mkdir -p reports && docker cp faults:/app/reports/. reports/
+    - exit ${STATUS:-0}
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths: [reports/]
+    reports:
+      junit: reports/junit-faults.xml
+
+# Publishes the latest demo reports from the default branch to GitLab Pages.
+pages:
+  stage: publish
+  image: python:3.13-slim
+  needs: [e2e-tests]
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    - python scripts/build_pages.py reports public
+  artifacts:
+    paths: [public]

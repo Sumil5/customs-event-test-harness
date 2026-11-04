@@ -1,0 +1,62 @@
+# GitHub Actions mirror of .gitlab-ci.yml (GitLab is the primary pipeline).
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.11.32"
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pytest tests/unit --junitxml=reports/junit-unit.xml
+
+  e2e:
+    needs: lint-and-unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Start the stack
+        run: docker compose up -d --build --wait
+      - name: End-to-end tests (containerised harness)
+        run: docker compose --profile test run --rm harness pytest tests/e2e -v --junitxml=reports/junit-e2e.xml
+      - name: Demo run (2,000 messages, reconcile + trace)
+        run: docker compose --profile test run --rm harness harness run -n 2000 --rate 200
+      - name: Collect logs
+        if: always()
+        run: docker compose logs --no-color > reports/compose.log 2>&1 || true
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: e2e-reports
+          path: reports/
+
+  fault-injection:
+    needs: lint-and-unit
+    runs-on: ubuntu-latest
+    env:
+      PERSISTENCE_FAULTS: rounding,truncate_description,ascii_names,drop_millis,skip_last_item,drop=0.02
+      ASSESSMENT_FAULTS: lane_boundary,delay=0.002:14000
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker compose up -d --build --wait
+      - name: Every injected defect must be detected
+        run: docker compose --profile test run --rm harness pytest tests/e2e/test_injected_faults.py -v
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: fault-injection-reports
+          path: reports/

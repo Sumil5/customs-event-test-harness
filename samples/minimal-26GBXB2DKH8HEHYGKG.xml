@@ -1,0 +1,58 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<GoodsMovementDeclaration xmlns="urn:example:customs:goods-movement:v1" schemaVersion="1.0">
+  <Header>
+    <MessageId>a1fbadfa-b9e3-40ca-b99f-c6f653f9ebc0</MessageId>
+    <CorrelationId>ea736985-9869-4ede-9ffe-1ab723275c05</CorrelationId>
+    <CreatedAt>2026-11-04T16:52:57.985Z</CreatedAt>
+    <SourceSystem>API</SourceSystem>
+  </Header>
+  <Declaration>
+    <DeclarationRef>26GBXB2DKH8HEHYGKG</DeclarationRef>
+    <DeclarationCategory>EXPORT</DeclarationCategory>
+    <MovementType>NI_TO_GB</MovementType>
+    <DeclarantEori>GB539082113815</DeclarantEori>
+    <Consignor>
+      <Name>Wells-Byrne</Name>
+      <Eori>XI059204250596</Eori>
+      <Address>
+        <Line1>8 Claire Prairie</Line1>
+        <Town>Newry</Town>
+        <CountryCode>GB</CountryCode>
+      </Address>
+    </Consignor>
+    <Consignee>
+      <Name>Walker and Sons</Name>
+      <Address>
+        <Line1>6 Rees Course</Line1>
+        <Town>London</Town>
+        <CountryCode>GB</CountryCode>
+      </Address>
+    </Consignee>
+    <Transport>
+      <Mode>AIR</Mode>
+    </Transport>
+    <ArrivalDate>2026-11-13</ArrivalDate>
+    <UkimsAuthorised>false</UkimsAuthorised>
+    <TotalGrossMassKg>1207.184</TotalGrossMassKg>
+    <InvoiceCurrency>GBP</InvoiceCurrency>
+    <TotalInvoiceValue>44512.45</TotalInvoiceValue>
+    <GoodsItems>
+      <GoodsItem>
+        <ItemNumber>1</ItemNumber>
+        <CommodityCode>08081080</CommodityCode>
+        <Description>Fresh apples</Description>
+        <CountryOfOrigin>GB</CountryOfOrigin>
+        <NetMassKg>263.856</NetMassKg>
+        <ItemValue>23681.32</ItemValue>
+      </GoodsItem>
+      <GoodsItem>
+        <ItemNumber>2</ItemNumber>
+        <CommodityCode>84713000</CommodityCode>
+        <Description>Portable laptop computers, 14-inch</Description>
+        <CountryOfOrigin>GB</CountryOfOrigin>
+        <NetMassKg>864.353</NetMassKg>
+        <ItemValue>20831.13</ItemValue>
+      </GoodsItem>
+    </GoodsItems>
+  </Declaration>
+</GoodsMovementDeclaration>

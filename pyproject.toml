@@ -1,0 +1,54 @@
+[project]
+name = "customs-event-test-harness"
+version = "1.0.0"
+description = "Test harness for an event-driven customs pipeline: XML payload generator, Kafka-to-Oracle reconciliation and correlation-ID SLA tracing."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "Sumil Depala" }]
+dependencies = [
+  "boto3>=1.43",
+  "confluent-kafka>=2.16",
+  "faker>=40.0",
+  "jinja2>=3.1",
+  "lxml>=6.1",
+  "oracledb>=26.1",
+  "pydantic>=2.14",
+  "pydantic-settings>=2.16",
+  "pyyaml>=6.0",
+  "rich>=15.0",
+  "typer>=0.27",
+]
+
+[project.scripts]
+harness = "customs_harness.cli:app"
+
+[dependency-groups]
+dev = [
+  "pytest>=9.2",
+  "ruff>=0.17",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/customs_harness"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = ["e2e: needs the docker compose stack running (make up)"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+src = ["src", "services", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+ignore = ["RUF001", "RUF003"]  # unicode test data is intentional
+
+[tool.ruff.lint.isort]
+known-first-party = ["customs_harness", "customs_services"]

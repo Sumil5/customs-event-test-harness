@@ -1,0 +1,274 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Goods Movement Declaration - message contract v1.0
+
+  An invented, simplified schema for a goods movement declaration, loosely
+  modelled on public concepts from UK/EU customs (EORI numbers, commodity
+  codes, MRN-style references, green/red lanes). It is NOT a real government
+  schema. The namespace uses the "example" URN namespace reserved by RFC 6963.
+
+  Every stage of the pipeline publishes this same document type:
+    * inbound / validated messages have no <Assessment> element
+    * the assessment service appends <Assessment> before persistence
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:gm="urn:example:customs:goods-movement:v1"
+           targetNamespace="urn:example:customs:goods-movement:v1"
+           elementFormDefault="qualified"
+           version="1.0">
+
+  <xs:element name="GoodsMovementDeclaration" type="gm:GoodsMovementDeclarationType"/>
+
+  <!-- ===================== Document structure ===================== -->
+
+  <xs:complexType name="GoodsMovementDeclarationType">
+    <xs:sequence>
+      <xs:element name="Header" type="gm:HeaderType"/>
+      <xs:element name="Declaration" type="gm:DeclarationBodyType"/>
+      <xs:element name="Assessment" type="gm:AssessmentType" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="schemaVersion" type="xs:string" use="required" fixed="1.0"/>
+  </xs:complexType>
+
+  <xs:complexType name="HeaderType">
+    <xs:sequence>
+      <xs:element name="MessageId" type="gm:UuidType"/>
+      <xs:element name="CorrelationId" type="gm:UuidType"/>
+      <xs:element name="CreatedAt" type="gm:UtcDateTimeType"/>
+      <xs:element name="SourceSystem" type="gm:SourceSystemType"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="DeclarationBodyType">
+    <xs:sequence>
+      <xs:element name="DeclarationRef" type="gm:DeclarationRefType"/>
+      <xs:element name="DeclarationCategory" type="gm:DeclarationCategoryType"/>
+      <xs:element name="MovementType" type="gm:MovementTypeType"/>
+      <xs:element name="DeclarantEori" type="gm:EoriType"/>
+      <xs:element name="Consignor" type="gm:PartyType"/>
+      <xs:element name="Consignee" type="gm:PartyType"/>
+      <xs:element name="Transport" type="gm:TransportType"/>
+      <xs:element name="ArrivalDate" type="xs:date"/>
+      <xs:element name="UkimsAuthorised" type="xs:boolean"/>
+      <xs:element name="TotalGrossMassKg" type="gm:MassType"/>
+      <xs:element name="InvoiceCurrency" type="gm:CurrencyType"/>
+      <xs:element name="TotalInvoiceValue" type="gm:AmountType"/>
+      <xs:element name="GoodsItems">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="GoodsItem" type="gm:GoodsItemType" minOccurs="1" maxOccurs="99"/>
+          </xs:sequence>
+        </xs:complexType>
+        <xs:unique name="UniqueItemNumber">
+          <xs:selector xpath="gm:GoodsItem"/>
+          <xs:field xpath="gm:ItemNumber"/>
+        </xs:unique>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="PartyType">
+    <xs:sequence>
+      <xs:element name="Name" type="gm:Text70Type"/>
+      <xs:element name="Eori" type="gm:EoriType" minOccurs="0"/>
+      <xs:element name="Address" type="gm:AddressType"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="AddressType">
+    <xs:sequence>
+      <xs:element name="Line1" type="gm:Text70Type"/>
+      <xs:element name="Line2" type="gm:Text70Type" minOccurs="0"/>
+      <xs:element name="Town" type="gm:Text35Type"/>
+      <xs:element name="Postcode" type="gm:PostcodeType" minOccurs="0"/>
+      <xs:element name="CountryCode" type="gm:CountryCodeType"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="TransportType">
+    <xs:sequence>
+      <xs:element name="Mode" type="gm:TransportModeType"/>
+      <xs:element name="VehicleRegistration" type="gm:VehicleRegistrationType" minOccurs="0"/>
+      <xs:element name="PortOfEntry" type="gm:UnLocodeType" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="GoodsItemType">
+    <xs:sequence>
+      <xs:element name="ItemNumber" type="gm:ItemNumberType"/>
+      <xs:element name="CommodityCode" type="gm:CommodityCodeType"/>
+      <xs:element name="Description" type="gm:DescriptionType"/>
+      <xs:element name="CountryOfOrigin" type="gm:CountryCodeType"/>
+      <xs:element name="NetMassKg" type="gm:MassType"/>
+      <xs:element name="ItemValue" type="gm:AmountType"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="AssessmentType">
+    <xs:sequence>
+      <xs:element name="RiskScore" type="gm:RiskScoreType"/>
+      <xs:element name="Lane" type="gm:LaneType"/>
+      <xs:element name="AssessedAt" type="gm:UtcDateTimeType"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- ===================== Simple types ===================== -->
+
+  <xs:simpleType name="UuidType">
+    <xs:restriction base="xs:string">
+      <xs:pattern value="[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- ISO 8601 date-time that must be expressed in UTC ("Z" suffix). -->
+  <xs:simpleType name="UtcDateTimeType">
+    <xs:restriction base="xs:dateTime">
+      <xs:pattern value="\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?Z"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- MRN-style 18 character reference: 2-digit year, 2-letter country, 14 alphanumerics. -->
+  <xs:simpleType name="DeclarationRefType">
+    <xs:restriction base="xs:string">
+      <xs:pattern value="\d{2}[A-Z]{2}[A-Z0-9]{14}"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- Country prefix followed by up to 15 alphanumerics (GB/XI EORIs use 12 or 15 digits). -->
+  <xs:simpleType name="EoriType">
+    <xs:restriction base="xs:string">
+      <xs:pattern value="[A-Z]{2}[A-Z0-9]{1,15}"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="SourceSystemType">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="TRADER_PORTAL"/>
+      <xs:enumeration value="API"/>
+      <xs:enumeration value="BULK_UPLOAD"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="DeclarationCategoryType">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="IMPORT"/>
+      <xs:enumeration value="EXPORT"/>
+      <xs:enumeration value="TRANSIT"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="MovementTypeType">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="GB_TO_NI"/>
+      <xs:enumeration value="NI_TO_GB"/>
+      <xs:enumeration value="EU_TO_NI"/>
+      <xs:enumeration value="NI_TO_EU"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="TransportModeType">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="SEA"/>
+      <xs:enumeration value="RAIL"/>
+      <xs:enumeration value="ROAD"/>
+      <xs:enumeration value="AIR"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="LaneType">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="GREEN"/>
+      <xs:enumeration value="RED"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="CurrencyType">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="GBP"/>
+      <xs:enumeration value="EUR"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="CountryCodeType">
+    <xs:restriction base="xs:string">
+      <xs:pattern value="[A-Z]{2}"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="UnLocodeType">
+    <xs:restriction base="xs:string">
+      <xs:pattern value="[A-Z]{2}[A-Z2-9]{3}"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- 8-digit CN code or 10-digit TARIC-style commodity code. -->
+  <xs:simpleType name="CommodityCodeType">
+    <xs:restriction base="xs:string">
+      <xs:pattern value="\d{8}|\d{10}"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="ItemNumberType">
+    <xs:restriction base="xs:positiveInteger">
+      <xs:maxInclusive value="99"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="RiskScoreType">
+    <xs:restriction base="xs:nonNegativeInteger">
+      <xs:maxInclusive value="100"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="MassType">
+    <xs:restriction base="xs:decimal">
+      <xs:minExclusive value="0"/>
+      <xs:totalDigits value="14"/>
+      <xs:fractionDigits value="3"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="AmountType">
+    <xs:restriction base="xs:decimal">
+      <xs:minInclusive value="0"/>
+      <xs:totalDigits value="14"/>
+      <xs:fractionDigits value="2"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="Text35Type">
+    <xs:restriction base="xs:string">
+      <xs:minLength value="1"/>
+      <xs:maxLength value="35"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="Text70Type">
+    <xs:restriction base="xs:string">
+      <xs:minLength value="1"/>
+      <xs:maxLength value="70"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="DescriptionType">
+    <xs:restriction base="xs:string">
+      <xs:minLength value="1"/>
+      <xs:maxLength value="512"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="PostcodeType">
+    <xs:restriction base="xs:string">
+      <xs:minLength value="1"/>
+      <xs:maxLength value="10"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="VehicleRegistrationType">
+    <xs:restriction base="xs:string">
+      <xs:minLength value="1"/>
+      <xs:maxLength value="20"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+</xs:schema>

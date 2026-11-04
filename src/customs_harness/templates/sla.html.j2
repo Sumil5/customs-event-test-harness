@@ -1,0 +1,85 @@
+{% extends "base.html.j2" %}
+{% block title %}SLA trace report{% endblock %}
+{% block content %}
+<h1>End-to-end SLA ({{ '%g' % r.sla_seconds }}s)
+  <span class="verdict {{ 'ok' if r.passed else 'bad' }}">{{ 'PASSED' if r.passed else 'FAILED' }}</span>
+</h1>
+<div class="meta">
+  {% if r.run_id %}Run <code>{{ r.run_id }}</code> · {% endif %}{{ '{:,}'.format(r.traces|length) }} correlation IDs traced
+  across inbound → validated → assessed → Oracle
+</div>
+
+<div class="tiles">
+  <div class="tile"><div class="label">Traced</div><div class="value">{{ '{:,}'.format(r.traces|length) }}</div>
+    <div class="sub">{{ outcomes.PERSISTED }} stored · {{ outcomes.REJECTED }} rejected</div></div>
+  <div class="tile {{ 'bad' if r.breaches else 'ok' }}"><div class="label">SLA breaches</div>
+    <div class="value">{{ r.breaches|length }}</div><div class="sub">over {{ '%g' % r.sla_seconds }}s end to end</div></div>
+  <div class="tile {{ 'bad' if r.incomplete else 'ok' }}"><div class="label">Incomplete</div>
+    <div class="value">{{ r.incomplete|length }}</div><div class="sub">never reached a final state</div></div>
+  <div class="tile"><div class="label">p95 end to end</div><div class="value">{{ ms(e2e.p95) }}</div>
+    <div class="sub">p50 {{ ms(e2e.p50) }}</div></div>
+  <div class="tile {{ 'warn' if e2e.max > r.sla_ms else '' }}"><div class="label">Slowest</div>
+    <div class="value">{{ ms(e2e.max) }}</div><div class="sub">max end to end</div></div>
+  <div class="tile"><div class="label">Bottleneck</div><div class="value" style="font-size:20px">{{ r.bottleneck or '—' }}</div>
+    <div class="sub">highest p95 stage</div></div>
+</div>
+
+<h2>Latency by stage</h2>
+<div class="card"><table>
+  <tr><th>Stage</th><th class="num">Messages</th><th class="num">p50</th><th class="num">p90</th><th class="num">p95</th>
+      <th class="num">p99</th><th class="num">Max</th></tr>
+  {% for hop, s in hops.items() %}
+  <tr><td>{{ hop }}{% if hop == r.bottleneck %} <span class="pill warn">bottleneck</span>{% endif %}</td>
+      <td class="num">{{ '{:,}'.format(s.count) }}</td><td class="num">{{ ms(s.p50) }}</td><td class="num">{{ ms(s.p90) }}</td>
+      <td class="num">{{ ms(s.p95) }}</td><td class="num">{{ ms(s.p99) }}</td><td class="num">{{ ms(s.max) }}</td></tr>
+  {% endfor %}
+  <tr><td><strong>end to end</strong></td><td class="num">{{ '{:,}'.format(e2e.count) }}</td><td class="num">{{ ms(e2e.p50) }}</td>
+      <td class="num">{{ ms(e2e.p90) }}</td><td class="num">{{ ms(e2e.p95) }}</td><td class="num">{{ ms(e2e.p99) }}</td>
+      <td class="num">{{ ms(e2e.max) }}</td></tr>
+</table></div>
+
+<h2>Distribution</h2>
+<div class="card"><table>
+  <tr><th>End-to-end time</th><th class="num">Messages</th><th style="width:60%"></th></tr>
+  {% for label, n in r.histogram %}
+  <tr><td>{{ label }}</td><td class="num">{{ '{:,}'.format(n) }}</td>
+      <td><div class="bar" style="width: {{ (100 * n / max_bucket)|round(1) }}%{% if loop.last and n %}; background: var(--bad){% endif %}"></div></td></tr>
+  {% endfor %}
+</table></div>
+
+<h2>SLA breaches{% if r.breaches|length > 200 %} (slowest 200){% endif %}</h2>
+<div class="card">
+{% if r.breaches %}
+<table>
+  <tr><th>Correlation ID</th><th>Declaration</th><th class="num">End to end</th><th>Slowest stage</th>
+      <th class="num">intake</th><th class="num">assessment</th><th class="num">persistence</th></tr>
+  {% for t in r.breaches[:200] %}
+  <tr><td class="mono">{{ t.correlation_id }}</td><td class="mono">{{ t.declaration_ref }}</td>
+      <td class="num"><span class="pill bad">{{ ms(t.end_to_end_ms) }}</span></td><td>{{ t.slowest_hop }}</td>
+      <td class="num">{{ ms(t.hop_ms.get('intake')) }}</td><td class="num">{{ ms(t.hop_ms.get('assessment')) }}</td>
+      <td class="num">{{ ms(t.hop_ms.get('persistence')) }}</td></tr>
+  {% endfor %}
+</table>
+{% else %}<div class="empty">Every message reached its final state within {{ '%g' % r.sla_seconds }}s.</div>{% endif %}
+</div>
+
+<h2>Incomplete journeys</h2>
+<div class="card">
+{% if r.incomplete %}
+<table>
+  <tr><th>Last stage reached</th><th class="num">Messages</th><th>Meaning</th></tr>
+  {% for stage, n in r.stalled_after.most_common() %}
+  <tr><td><code>{{ stage }}</code></td><td class="num">{{ n }}</td><td>{{ meanings.get(stage, '') }}</td></tr>
+  {% endfor %}
+</table>
+{% else %}<div class="empty">No messages went missing.</div>{% endif %}
+</div>
+
+{% if r.anomalies %}
+<h2>Anomalies</h2>
+<div class="card"><table>
+  <tr><th>Correlation ID</th><th>Issue</th></tr>
+  {% for t in r.anomalies[:200] %}<tr><td class="mono">{{ t.correlation_id }}</td><td>{{ t.anomalies|join('; ') }}</td></tr>{% endfor %}
+</table></div>
+{% endif %}
+{% endblock %}
