@@ -29,8 +29,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - name: Build and pull images (retried on network errors; tests never are)
+        run: |
+          sh scripts/retry.sh 3 docker compose --profile test build
+          sh scripts/retry.sh 3 docker compose pull --ignore-buildable
       - name: Start the stack
-        run: docker compose up -d --build --wait
+        run: docker compose up -d --wait
       - name: End-to-end tests (containerised harness)
         run: docker compose --profile test run --rm harness pytest tests/e2e -v --junitxml=reports/junit-e2e.xml
       - name: Demo run (2,000 messages, reconcile + trace)
@@ -52,7 +56,11 @@ jobs:
       ASSESSMENT_FAULTS: lane_boundary,delay=0.002:14000
     steps:
       - uses: actions/checkout@v7
-      - run: docker compose up -d --build --wait
+      - name: Build and pull images (retried on network errors; tests never are)
+        run: |
+          sh scripts/retry.sh 3 docker compose --profile test build
+          sh scripts/retry.sh 3 docker compose pull --ignore-buildable
+      - run: docker compose up -d --wait
       - name: Every injected defect must be detected
         run: docker compose --profile test run --rm harness pytest tests/e2e/test_injected_faults.py -v
       - uses: actions/upload-artifact@v7

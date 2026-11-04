@@ -11,6 +11,10 @@ stages:
 
 default:
   interruptible: true
+  # Re-run a job only when the runner itself failed, never because a test failed.
+  retry:
+    max: 1
+    when: [runner_system_failure, api_failure]
 
 variables:
   UV_VERSION: "0.11.32"
@@ -48,7 +52,11 @@ workflow:
     DOCKER_CERT_PATH: "/certs/client"
   before_script:
     - docker info --format 'Docker {{.ServerVersion}} on {{.OSType}}/{{.Architecture}}'
-    - docker compose up -d --build --wait
+    # Builds and pulls depend on PyPI and Docker Hub, so retry those steps on network
+    # blips. The tests themselves are never retried.
+    - sh scripts/retry.sh 3 docker compose --profile test build
+    - sh scripts/retry.sh 3 docker compose pull --ignore-buildable
+    - docker compose up -d --wait
   after_script:
     - mkdir -p reports
     - docker compose logs --no-color > reports/compose.log 2>&1 || true

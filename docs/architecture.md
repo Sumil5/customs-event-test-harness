@@ -104,3 +104,5 @@ lint ──> unit-tests ──> e2e-tests (DinD: compose stack + containerised h
 ```
 
 The infrastructure images bake their init scripts in rather than bind-mounting them, because a Docker-in-Docker daemon can't see the job's files. Reports are copied out of the harness container with `docker cp` for the same reason. Docker Hub pulls go through `mirror.gcr.io` to avoid anonymous rate limits.
+
+Image builds and pulls depend on PyPI and Docker Hub, so the pipelines retry them up to three times with [`scripts/retry.sh`](../scripts/retry.sh). A shared runner occasionally loses the network for a minute. Test steps are never retried, because retrying tests would hide flakiness, and flaky tests are exactly what a harness must not tolerate.

@@ -2,6 +2,11 @@
 # and in CI, so results do not depend on whoever's laptop ran them.
 FROM python:3.13-slim
 
+# Build-time only: be patient with PyPI, as CI networks occasionally stall.
+ARG PIP_DEFAULT_TIMEOUT=60
+ARG PIP_RETRIES=10
+ARG UV_HTTP_TIMEOUT=60
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \

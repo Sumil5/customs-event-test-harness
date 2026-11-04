@@ -1,6 +1,10 @@
 # Simulated customs services (the system under test). One image, three entrypoints.
 FROM python:3.13-slim
 
+# Build-time only: be patient with PyPI, as CI networks occasionally stall.
+ARG PIP_DEFAULT_TIMEOUT=60
+ARG PIP_RETRIES=10
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
