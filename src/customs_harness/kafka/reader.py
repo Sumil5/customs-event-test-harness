@@ -30,6 +30,7 @@ class Record:
     key: bytes | None
     value: bytes | None
     headers: dict[str, str]
+    timestamp_type: int = 0  # confluent_kafka.TIMESTAMP_LOG_APPEND_TIME when the broker set it
 
     @property
     def correlation_id(self) -> str | None:
@@ -110,14 +111,16 @@ def read_topic(
                 }
                 if run_id is not None and headers.get(RUN_ID_HEADER) != run_id:
                     continue
+                timestamp_type, timestamp_ms = message.timestamp()
                 yield Record(
                     topic=topic,
                     partition=partition,
                     offset=offset,
-                    timestamp_ms=message.timestamp()[1],
+                    timestamp_ms=timestamp_ms,
                     key=message.key(),
                     value=message.value(),
                     headers=headers,
+                    timestamp_type=timestamp_type,
                 )
     finally:
         consumer.close()

@@ -1,7 +1,9 @@
 """Timeliness: every message reaches its final state within the SLA (13 s)."""
 
 import pytest
+from confluent_kafka import TIMESTAMP_LOG_APPEND_TIME
 
+from customs_harness.kafka import read_topic
 from customs_harness.tracing.collector import STAGES, collect_traces
 from customs_harness.tracing.report import write_reports
 from customs_harness.tracing.sla import SlaReport
@@ -48,3 +50,16 @@ def test_rejections_are_traced_to_the_dead_letter_topic(traced_run):
     run, report = traced_run
     rejected = {t.correlation_id for t in report.traces if t.outcome == "REJECTED"}
     assert rejected == {e.correlation_id for e in run.manifest.expected_rejected}
+
+
+@pytest.mark.parametrize("stage", ["submitted", "validated", "assessed", "rejected"])
+def test_stage_timestamps_come_from_the_broker_clock(stage, traced_run, settings):
+    """With CreateTime, client start-up delays and client clock skew would be measured as latency."""
+    run, _ = traced_run
+    topic = settings.stage_topics[stage]
+    record = next(
+        read_topic(settings.kafka_bootstrap_servers, topic, since=run.manifest.read_from, run_id=run.run_id),
+        None,
+    )
+    assert record is not None, f"no records for this run on {topic}"
+    assert record.timestamp_type == TIMESTAMP_LOG_APPEND_TIME, f"{topic} is not using LogAppendTime"

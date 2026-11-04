@@ -31,9 +31,9 @@ class Publisher:
                 "compression.type": "zstd",
             }
         )
-        # Connect and fetch metadata *before* the first message is time-stamped. A cold
-        # producer needs ~0.5 s before it can send; without this, the first messages of
-        # every run would have that start-up time counted as pipeline latency.
+        # Connect up front: a cold producer needs ~0.5 s before its first send. Latency is
+        # measured from the broker's LogAppendTime, so this no longer affects the SLA
+        # figures, but it keeps the publish rate even from the first message.
         self._producer.list_topics(topic, timeout=10)
         self._delivered: list[PublishedRecord] = []
         self._errors: list[str] = []

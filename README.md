@@ -142,7 +142,7 @@ The assessment service's own processing took 0.27 ms, but the message waited 14 
 - **Type-aware comparison.** `12.5` equals `12.500`. Oracle stores `''` as `NULL`. `TIMESTAMP` columns are UTC. `xs:boolean` accepts `true`/`1`. Free text is compared exactly, whitespace included.
 - **Bounded, read-only Kafka reads.** The reader snapshots the high watermarks, seeks by timestamp and never commits offsets, so it can't disturb the services' consumer groups.
 - **Batched Oracle queries.** One IN-list query per table per 500 messages, chunked at Oracle's 1,000-bind limit. 2,000 messages reconcile in about 2.5 s.
-- **The clock starts when Kafka has the message.** A new Kafka producer needs about 0.5 s to connect before it can send, so the publisher connects before it time-stamps anything. Without that, the first messages of every run would be charged half a second the pipeline never spent.
+- **The clock starts when Kafka has the message, on the broker's clock.** Topics use `LogAppendTime`, so the broker stamps every record as it accepts it. With producer-side `CreateTime`, two things would be counted as pipeline latency. One is a test tool's start-up: a new producer needs about 0.5 s before it can send. The other is clock skew between machines, such as a Mac host and the Docker VM.
 - **Unique identifiers per run.** A seed reproduces the content but never the keys. Re-used keys collide with existing rows, and an idempotent pipeline silently ignores the new messages. The tracer flags a row older than its message as an anomaly.
 - **Hardened XML parsing.** No entity expansion and no network access (XXE-safe), in the services and the harness alike.
 

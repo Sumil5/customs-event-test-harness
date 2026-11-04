@@ -59,7 +59,7 @@ Before reading anything, the engine checks the mapping against `USER_TAB_COLUMNS
 
 ## Tracing and the SLA
 
-Kafka record timestamps (producer `CreateTime`) mark when each stage emitted a message. Oracle's `PERSISTED_AT` marks the end:
+Kafka record timestamps mark when each stage's output was accepted by the broker. The topics use `LogAppendTime`, so these timestamps come from the broker's clock. Oracle's `PERSISTED_AT` marks the end:
 
 ```text
 submitted --intake--> validated --assessment--> assessed --persistence--> persisted
@@ -70,8 +70,7 @@ submitted --intake--> validated --assessment--> assessed --persistence--> persis
 - **Bottleneck** is the stage with the highest p95. **Breach causes** gives the slowest stage of each breaching message.
 - **Incomplete journeys** report the last stage reached. For example, "stopped after assessed" points straight at the persistence service. This is how lost messages are isolated.
 - **Anomalies** are rows committed *before* their message was sent. That means a key collision or a replay, not this message's write, so the measurement is distrusted and the run fails.
-- **Start time.** The publisher connects to Kafka before it stamps any message. A cold producer needs about 0.5 s before its first send, and that delay must not be counted as pipeline latency.
-- **Clocks.** Locally every container shares one clock. Across real hosts you would allow for NTP skew (`CLOCK_TOLERANCE`), or prefer broker `LogAppendTime`.
+- **Start time and clocks.** Every Kafka timestamp is the broker's `LogAppendTime`, so client clocks never enter the calculation. That covers the harness running on a Mac while the broker runs in a VM, and a producer that takes about 0.5 s to start sending. A test checks that each stage topic really uses `LogAppendTime`. The final timestamp comes from Oracle's clock, so across real hosts you would still allow for NTP skew between the broker and the database (`CLOCK_TOLERANCE`).
 
 ### CloudWatch
 
